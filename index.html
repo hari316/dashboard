@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Weekenders Batting Rating</title>
+<style>
+:root {
+  --bg: #0e0f11;
+  --panel: #16181c;
+  --panel-2: #1c1f24;
+  --stroke: #2a2e35;
+  --text: #e6e8eb;
+  --text-2: #a2a8b0;
+  --text-3: #6f757d;
+  --accent: #4c8dff;
+  --green: #3fb950;
+  --blue: #4c8dff;
+  --red: #f0616d;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  padding: 28px;
+}
+.wrap { max-width: 1040px; margin: 0 auto; }
+h1 { font-size: 24px; margin: 0 0 6px; }
+h2 { font-size: 18px; margin: 24px 0 10px; }
+p.sub { color: var(--text-2); margin: 0 0 18px; max-width: 760px; }
+.callout {
+  background: var(--panel);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 18px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.callout b { color: var(--text); }
+code {
+  background: var(--panel-2);
+  border: 1px solid var(--stroke);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.92em;
+  color: var(--text);
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+.card h3 { margin: 0 0 14px; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+@media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+.ctrl label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.ctrl .hint { color: var(--text-3); font-size: 12px; margin-top: 4px; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill {
+  border: 1px solid var(--stroke);
+  background: var(--panel-2);
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+.pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  width: 100%;
+  color-scheme: dark;
+}
+.switch { display: flex; align-items: center; gap: 8px; }
+.switch input { accent-color: var(--accent); width: 16px; height: 16px; }
+.stats { display: flex; flex-wrap: wrap; gap: 22px; margin: 4px 0 20px; }
+.stat .v { font-size: 22px; font-weight: 700; }
+.stat .v.info { color: var(--accent); }
+.stat .l { font-size: 12px; color: var(--text-3); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--stroke); white-space: nowrap; }
+th { color: var(--text-3); font-weight: 600; position: sticky; top: 0; background: var(--bg); }
+th:nth-child(2), td:nth-child(2) { text-align: left; }
+tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
+td.rating-active { font-weight: 700; color: var(--accent); }
+td.rating-muted { color: var(--text-3); }
+.tone { border-left: 3px solid transparent; }
+.tone.success { border-left-color: var(--green); }
+.tone.info { border-left-color: var(--blue); }
+.tone.danger { border-left-color: var(--red); }
+.caption { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+.seg { display: flex; gap: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Weekenders Batting Rating</h1>
+  <p class="sub" id="subtitle"></p>
+
+  <div class="callout" id="formula"></div>
+
+  <div class="card">
+    <h3>Rating parameters</h3>
+    <div class="ctrl" style="margin-bottom:18px">
+      <label>Model</label>
+      <div class="seg" id="model"></div>
+      <div class="hint">Simple = avg + runs + strike-rate blend. Advanced = avg + runs core with an SR bonus multiplier.</div>
+    </div>
+    <div class="grid" id="controls"></div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <h2 id="lbTitle">Leaderboard</h2>
+  <div style="overflow:auto; border:1px solid var(--stroke); border-radius:8px;">
+    <table id="table"></table>
+  </div>
+  <div class="caption" id="caption"></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// DATA
+// Source: Weekenders_Player_Season_Stats_Updated.xlsx (Calculation Data sheet).
+// Career = all seasons aggregated. avg = runs / dismissals, SR = runs / balls * 100.
+// To update the dashboard, edit the rows below and reload this file.
+// ---------------------------------------------------------------------------
+const DATA = [
+  {player:"Anwar Guthbudeen",season:"2025 Champions Trophy",games:5,runs:35,balls:66,out:5,inns:5},
+  {player:"Anwar Guthbudeen",season:"2025 Fall Open",games:1,runs:7,balls:19,out:1,inns:1},
+  {player:"Anwar Guthbudeen",season:"2026 Regular Season",games:2,runs:4,balls:12,out:2,inns:2},
+  {player:"Arivazhagan Velayutham",season:"2025 Fall Open",games:1,runs:0,balls:0,out:0,inns:0},
+  {player:"Ashwath Ravichandran",season:"2025 Champions Trophy",games:1,runs:2,balls:6,out:0,inns:1},
+  {player:"Ashwath Ravichandran",season:"2025 Fall Open",games:9,runs:54,balls:90,out:5,inns:8},
+  {player:"Ashwath Ravichandran",season:"2026 Fall Open",games:3,runs:24,balls:29,out:3,inns:3},
+  {player:"Ashwath Ravichandran",season:"2026 Regular Season",games:10,runs:108,balls:119,out:9,inns:10},
+  {player:"Franco Ignaci",season:"2025 Champions Trophy",games:7,runs:20,balls:48,out:5,inns:7},
+  {player:"Franco Ignaci",season:"2025 Fall Open",games:11,runs:57,balls:66,out:5,inns:8},
+  {player:"Franco Ignaci",season:"2026 Fall Open",games:2,runs:3,balls:5,out:2,inns:2},
+  {player:"Franco Ignaci",season:"2026 Regular Season",games:8,runs:22,balls:32,out:5,inns:7},
+  {player:"Gokulnath Velliappan",season:"2025 Champions Trophy",games:5,runs:21,balls:29,out:3,inns:4},
+  {player:"Gokulnath Velliappan",season:"2025 Fall Open",games:9,runs:16,balls:15,out:2,inns:6},
+  {player:"Gokulnath Velliappan",season:"2026 Fall Open",games:4,runs:11,balls:30,out:3,inns:4},
+  {player:"Gokulnath Velliappan",season:"2026 Regular Season",games:11,runs:25,balls:67,out:5,inns:8},
+  {player:"Hari Haran Venugopal",season:"2025 Champions Trophy",games:5,runs:59,balls:90,out:4,inns:5},
+  {player:"Hari Haran Venugopal",season:"2025 Fall Open",games:12,runs:130,balls:136,out:9,inns:12},
+  {player:"Hari Haran Venugopal",season:"2026 Fall Open",games:3,runs:25,balls:33,out:3,inns:3},
+  {player:"Hari Haran Venugopal",season:"2026 Regular Season",games:8,runs:86,balls:119,out:6,inns:8},
+  {player:"Johnny Mahesh Amalachandran",season:"2025 Champions Trophy",games:4,runs:26,balls:32,out:3,inns:4},
+  {player:"Johnny Mahesh Amalachandran",season:"2025 Fall Open",games:9,runs:57,balls:119,out:9,inns:9},
+  {player:"Johnny Mahesh Amalachandran",season:"2026 Regular Season",games:9,runs:59,balls:133,out:9,inns:9},
+  {player:"Karthick Valivittan",season:"2025 Champions Trophy",games:6,runs:67,balls:91,out:6,inns:6},
+  {player:"Karthick Valivittan",season:"2025 Fall Open",games:7,runs:67,balls:75,out:6,inns:6},
+  {player:"Karthick Valivittan",season:"2026 Fall Open",games:4,runs:32,balls:34,out:4,inns:4},
+  {player:"Karthick Valivittan",season:"2026 Regular Season",games:8,runs:72,balls:94,out:7,inns:8},
+  {player:"Karthikeyan Saravanavel",season:"2025 Champions Trophy",games:6,runs:15,balls:42,out:3,inns:4},
+  {player:"Karthikeyan Saravanavel",season:"2025 Fall Open",games:13,runs:64,balls:99,out:10,inns:11},
+  {player:"Karthikeyan Saravanavel",season:"2026 Fall Open",games:4,runs:28,balls:42,out:3,inns:4},
+  {player:"Karthikeyan Saravanavel",season:"2026 Regular Season",games:11,runs:103,balls:193,out:8,inns:9},
+  {player:"Mohanasundaram Subramani",season:"2026 Fall Open",games:3,runs:40,balls:49,out:3,inns:3},
+  {player:"Mohanasundaram Subramani",season:"2026 Regular Season",games:1,runs:4,balls:6,out:1,inns:1},
+  {player:"Muthukumar Mylsamy",season:"2026 Fall Open",games:1,runs:1,balls:4,out:1,inns:1},
+  {player:"Prabakaran Ravichandran",season:"2025 Champions Trophy",games:2,runs:2,balls:3,out:1,inns:1},
+  {player:"Prabakaran Ravichandran",season:"2025 Fall Open",games:4,runs:0,balls:0,out:0,inns:0},
+  {player:"Prabakaran Ravichandran",season:"2026 Fall Open",games:2,runs:5,balls:15,out:2,inns:2},
+  {player:"Prabakaran Ravichandran",season:"2026 Regular Season",games:10,runs:41,balls:59,out:2,inns:9},
+  {player:"Raghuram Rangarajan",season:"2025 Champions Trophy",games:4,runs:12,balls:13,out:1,inns:3},
+  {player:"Raghuram Rangarajan",season:"2025 Fall Open",games:9,runs:60,balls:107,out:8,inns:8},
+  {player:"Raghuram Rangarajan",season:"2026 Fall Open",games:3,runs:8,balls:20,out:3,inns:3},
+  {player:"Raghuram Rangarajan",season:"2026 Regular Season",games:4,runs:45,balls:67,out:3,inns:4},
+  {player:"Ravindar Reddy",season:"2025 Champions Trophy",games:4,runs:17,balls:37,out:4,inns:4},
+  {player:"Ravindar Reddy",season:"2025 Fall Open",games:8,runs:47,balls:101,out:8,inns:8},
+  {player:"Ravindar Reddy",season:"2026 Regular Season",games:7,runs:28,balls:60,out:6,inns:6},
+  {player:"Sankaranarayanan Neelamegasamy",season:"2025 Champions Trophy",games:6,runs:26,balls:25,out:6,inns:6},
+  {player:"Sankaranarayanan Neelamegasamy",season:"2025 Fall Open",games:12,runs:31,balls:23,out:4,inns:8},
+  {player:"Sankaranarayanan Neelamegasamy",season:"2026 Regular Season",games:8,runs:30,balls:23,out:6,inns:7},
+  {player:"Siddhant Swaroop",season:"2025 Champions Trophy",games:5,runs:77,balls:92,out:5,inns:5},
+  {player:"Siddhant Swaroop",season:"2025 Fall Open",games:12,runs:148,balls:157,out:7,inns:11},
+  {player:"Siddhant Swaroop",season:"2026 Fall Open",games:4,runs:20,balls:50,out:3,inns:4},
+  {player:"Siddhant Swaroop",season:"2026 Regular Season",games:8,runs:4,balls:33,out:8,inns:8},
+  {player:"Sivaraman Kathiresan",season:"2025 Champions Trophy",games:5,runs:51,balls:63,out:3,inns:4},
+  {player:"Sivaraman Kathiresan",season:"2025 Fall Open",games:9,runs:67,balls:118,out:8,inns:8},
+  {player:"Sivaraman Kathiresan",season:"2026 Fall Open",games:4,runs:47,balls:62,out:4,inns:4},
+  {player:"Sivaraman Kathiresan",season:"2026 Regular Season",games:4,runs:31,balls:48,out:4,inns:4},
+  {player:"Srikanth Jothilingam",season:"2026 Fall Open",games:3,runs:24,balls:26,out:2,inns:3},
+  {player:"Srinath Murali",season:"2025 Champions Trophy",games:7,runs:75,balls:100,out:6,inns:7},
+  {player:"Srinath Murali",season:"2025 Fall Open",games:5,runs:34,balls:58,out:4,inns:4},
+  {player:"Srinath Murali",season:"2026 Fall Open",games:3,runs:13,balls:28,out:3,inns:3},
+  {player:"Srinath Murali",season:"2026 Regular Season",games:6,runs:28,balls:75,out:5,inns:5},
+  {player:"Vijayan N",season:"2025 Champions Trophy",games:5,runs:20,balls:36,out:4,inns:4},
+  {player:"Vijayan N",season:"2025 Fall Open",games:12,runs:141,balls:249,out:10,inns:12},
+  {player:"Vijayan N",season:"2026 Fall Open",games:1,runs:9,balls:13,out:1,inns:1},
+  {player:"Vijayan N",season:"2026 Regular Season",games:6,runs:63,balls:99,out:5,inns:5},
+];
+
+const SEASONS = ["Career","2025 Champions Trophy","2025 Fall Open","2026 Fall Open","2026 Regular Season"];
+
+// ---------------------------------------------------------------------------
+// LOGIC + RENDERING
+// ---------------------------------------------------------------------------
+const state = {
+  model: "simple",
+  season: "Career",
+  wSimpleSplit: "50-20-30",
+  curve: 100,
+  runsCurve: 100,
+  wAvg: 70,
+  baseline: 60,
+  xBonus: 5,
+  minInns: 3,
+  capOn: true,
+  capMax: 30,
+  penalize: false,
+};
+
+function aggregate(season) {
+  const rows = season === "Career" ? DATA : DATA.filter(r => r.season === season);
+  const map = new Map();
+  for (const r of rows) {
+    const a = map.get(r.player) || {player:r.player,runs:0,balls:0,out:0,inns:0,games:0};
+    a.runs += r.runs; a.balls += r.balls; a.out += r.out; a.inns += r.inns; a.games += r.games;
+    map.set(r.player, a);
+  }
+  const out = [...map.values()];
+  for (const a of out) {
+    a.avg = a.out > 0 ? a.runs / a.out : (a.runs > 0 ? a.runs : null);
+    a.sr = a.balls > 0 ? (a.runs / a.balls) * 100 : null;
+  }
+  return out;
+}
+
+function fmt(n, d = 2) {
+  if (n === null || n === undefined || Number.isNaN(n)) return "\u2014";
+  return n.toFixed(d);
+}
+
+function compute() {
+  const s = state;
+  const simple = s.model === "simple";
+  const all = aggregate(s.season);
+  const qualified = all.filter(a => a.inns >= s.minInns && a.avg !== null && a.sr !== null);
+  const bestAvg = qualified.reduce((m,a) => Math.max(m, a.avg || 0), 0);
+  const bestRuns = qualified.reduce((m,a) => Math.max(m, a.runs), 0);
+  const bestSR = qualified.reduce((m,a) => Math.max(m, a.sr || 0), 0);
+  const benchmark = bestAvg * s.curve / 100;
+  const runsBenchmark = bestRuns * s.runsCurve / 100;
+  const wa = s.wAvg / 100;
+  const [sWA, sWR, sWS] = s.wSimpleSplit.split("-").map(n => Number(n) / 100);
+
+  const scored = qualified.map(a => {
+    const avg = a.avg, sr = a.sr;
+    const sAvgR = bestAvg > 0 ? Math.min(100, avg / bestAvg * 100) : 0;
+    const sRunsR = bestRuns > 0 ? Math.min(100, a.runs / bestRuns * 100) : 0;
+    const sSrR = bestSR > 0 ? Math.min(100, sr / bestSR * 100) : 0;
+    const simRating = sWA*sAvgR + sWR*sRunsR + sWS*sSrR;
+    const avgRating = benchmark > 0 ? Math.min(100, avg / benchmark * 100) : 0;
+    const runsRating = runsBenchmark > 0 ? Math.min(100, a.runs / runsBenchmark * 100) : 0;
+    const core = wa*avgRating + (1-wa)*runsRating;
+    let bonusFrac = ((sr - s.baseline) / 5) * (s.xBonus / 100);
+    if (!s.penalize && bonusFrac < 0) bonusFrac = 0;
+    if (s.capOn) bonusFrac = Math.min(bonusFrac, s.capMax / 100);
+    const advRating = core * (1 + bonusFrac);
+    return {...a, avg, sr, sAvgR, sRunsR, sSrR, simRating, avgRating, runsRating, core, bonusFrac, advRating,
+            rating: simple ? simRating : advRating};
+  }).sort((x,y) => y.rating - x.rating);
+
+  return {simple, scored, bestAvg, bestRuns, bestSR, benchmark, runsBenchmark, qualified,
+          bestAvgPlayer: (qualified.find(a=>a.avg===bestAvg)||{}).player || "\u2014",
+          bestRunsPlayer: (qualified.find(a=>a.runs===bestRuns)||{}).player || "\u2014",
+          bestSRPlayer: (qualified.find(a=>a.sr===bestSR)||{}).player || "\u2014"};
+}
+
+function pills(options, current, onPick, suffix) {
+  const div = document.createElement("div");
+  div.className = "pills";
+  for (const o of options) {
+    const b = document.createElement("div");
+    b.className = "pill" + (o === current ? " active" : "");
+    b.textContent = o + (suffix || "");
+    b.onclick = () => { onPick(o); render(); };
+    div.appendChild(b);
+  }
+  return div;
+}
+
+function ctrl(label, node, hint) {
+  const d = document.createElement("div");
+  d.className = "ctrl";
+  const l = document.createElement("label"); l.textContent = label; d.appendChild(l);
+  d.appendChild(node);
+  if (hint) { const h = document.createElement("div"); h.className = "hint"; h.textContent = hint; d.appendChild(h); }
+  return d;
+}
+
+function render() {
+  const r = compute();
+  const simple = r.simple;
+
+  document.getElementById("subtitle").textContent = simple
+    ? "Simple model: average, total runs, and strike rate are each graded on a curve against the team's best, then blended by weight."
+    : "Advanced model: average and total runs form a curved core, then a strike-rate bonus is applied on top.";
+
+  const [sWA, sWR, sWS] = state.wSimpleSplit.split("-");
+  document.getElementById("formula").innerHTML = simple
+    ? `<b>Formula.</b> Avg Rating = min(100, avg / best avg &times; 100) &middot; Runs Rating = min(100, runs / best runs &times; 100) &middot; SR Rating = min(100, SR / best SR &times; 100)<br>Rating = <code>${sWA}%</code> &times; Avg + <code>${sWR}%</code> &times; Runs + <code>${sWS}%</code> &times; SR`
+    : `<b>Formula.</b> Avg Rating = min(100, avg / (best avg &times; curve%) &times; 100) &middot; Runs Rating = min(100, runs / (best runs &times; runs curve%) &times; 100)<br>Core = w &times; Avg Rating + (1 &minus; w) &times; Runs Rating &middot; SR Bonus = ((SR &minus; baseline) / 5) &times; x% &middot; Rating = Core &times; (1 + SR Bonus)`;
+
+  const modelDiv = document.getElementById("model");
+  modelDiv.innerHTML = "";
+  [["simple","Simple (Avg + Runs + SR)"],["advanced","Advanced (Avg + Runs + SR bonus)"]].forEach(([v,l]) => {
+    const b = document.createElement("div");
+    b.className = "pill" + (state.model === v ? " active" : "");
+    b.textContent = l;
+    b.onclick = () => { state.model = v; render(); };
+    modelDiv.appendChild(b);
+  });
+
+  const c = document.getElementById("controls");
+  c.innerHTML = "";
+
+  const seasonSel = document.createElement("select");
+  SEASONS.forEach(s => { const o = document.createElement("option"); o.value = s; o.textContent = s; if (s===state.season) o.selected = true; seasonSel.appendChild(o); });
+  seasonSel.onchange = () => { state.season = seasonSel.value; render(); };
+  c.appendChild(ctrl("Season", seasonSel, "Career aggregates all four competitions."));
+
+  c.appendChild(ctrl("Minimum innings (qualification)",
+    pills([1,2,3,5,8], state.minInns, v => state.minInns = v), "Filters out tiny samples."));
+
+  if (simple) {
+    const splitSel = document.createElement("select");
+    [["60-00-40","Avg 60 / Runs 0 / SR 40"],["50-20-30","Avg 50 / Runs 20 / SR 30"],
+     ["40-30-30","Avg 40 / Runs 30 / SR 30"],["40-20-40","Avg 40 / Runs 20 / SR 40"],
+     ["34-33-33","Avg 34 / Runs 33 / SR 33"],["50-30-20","Avg 50 / Runs 30 / SR 20"]].forEach(([v,l]) => {
+      const o = document.createElement("option"); o.value = v; o.textContent = l; if (v===state.wSimpleSplit) o.selected = true; splitSel.appendChild(o);
+    });
+    splitSel.onchange = () => { state.wSimpleSplit = splitSel.value; render(); };
+    c.appendChild(ctrl("Weight split \u2014 Avg / Runs / SR", splitSel, "How the three metrics are blended (sums to 100%)."));
+  } else {
+    c.appendChild(ctrl(`Avg curve \u2014 % of best avg (${fmt(r.benchmark,2)})`,
+      pills([50,60,70,80,100], state.curve, v => state.curve = v, "%"), "Higher = stricter; fewer players hit 100."));
+    c.appendChild(ctrl(`Runs curve \u2014 % of best runs (${fmt(r.runsBenchmark,0)})`,
+      pills([50,60,70,80,100], state.runsCurve, v => state.runsCurve = v, "%"), "Rewards total volume of runs scored."));
+    c.appendChild(ctrl(`Weight \u2014 Avg ${state.wAvg}% / Runs ${100-state.wAvg}%`,
+      pills([50,60,70,80,100], state.wAvg, v => state.wAvg = v, "%"), "How much average matters vs total runs."));
+    c.appendChild(ctrl("SR baseline (bonus starts above this)",
+      pills([50,55,60,65], state.baseline, v => state.baseline = v)));
+    c.appendChild(ctrl("x \u2014 bonus % per 5 SR over baseline",
+      pills([3,5,8,10], state.xBonus, v => state.xBonus = v, "%"), "Higher rewards fast scoring more."));
+
+    const capWrap = document.createElement("div");
+    const capRow = document.createElement("div"); capRow.className = "switch";
+    const capCb = document.createElement("input"); capCb.type = "checkbox"; capCb.checked = state.capOn;
+    capCb.onchange = () => { state.capOn = capCb.checked; render(); };
+    const capLbl = document.createElement("span"); capLbl.textContent = "Cap SR bonus";
+    capRow.appendChild(capCb); capRow.appendChild(capLbl); capWrap.appendChild(capRow);
+    if (state.capOn) { capWrap.appendChild(pills([15,20,30,50], state.capMax, v => state.capMax = v, "%")); }
+    const penRow = document.createElement("div"); penRow.className = "switch"; penRow.style.marginTop = "10px";
+    const penCb = document.createElement("input"); penCb.type = "checkbox"; penCb.checked = state.penalize;
+    penCb.onchange = () => { state.penalize = penCb.checked; render(); };
+    const penLbl = document.createElement("span"); penLbl.textContent = "Penalize SR below baseline";
+    penRow.appendChild(penCb); penRow.appendChild(penLbl); capWrap.appendChild(penRow);
+    c.appendChild(ctrl("Strike-rate bonus", capWrap));
+  }
+
+  const stats = document.getElementById("stats");
+  const statItems = [
+    [fmt(r.bestAvg,2), `Best avg (${r.bestAvgPlayer.split(" ")[0]})`, false],
+    [String(r.bestRuns), `Best runs (${r.bestRunsPlayer.split(" ")[0]})`, false],
+  ];
+  if (simple) statItems.push([fmt(r.bestSR,1), `Best SR (${r.bestSRPlayer.split(" ")[0]})`, true]);
+  else { statItems.push([fmt(r.benchmark,2), "Avg benchmark = 100", true]); statItems.push([fmt(r.runsBenchmark,0), "Runs benchmark = 100", true]); }
+  statItems.push([String(r.scored.length), "Qualified players", false]);
+  stats.innerHTML = statItems.map(([v,l,info]) => `<div class="stat"><div class="v${info?" info":""}">${v}</div><div class="l">${l}</div></div>`).join("");
+
+  document.getElementById("lbTitle").textContent = "Leaderboard \u2014 " + state.season;
+  const headers = simple
+    ? ["#","Player","Inns","Runs","Avg","SR","Avg R","Runs R","SR R","Simple","Advanced"]
+    : ["#","Player","Inns","Runs","Avg","SR","Avg R","Runs R","SR Bonus","Simple","Advanced"];
+  const thead = "<thead><tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr></thead>";
+  const body = r.scored.map((s, i) => {
+    const tone = s.rating >= 85 ? "success" : s.rating >= 55 ? "info" : s.rating < 35 ? "danger" : "";
+    const cells = simple
+      ? [i+1, s.player, s.inns, s.runs, fmt(s.avg), fmt(s.sr,1), fmt(s.sAvgR,1), fmt(s.sRunsR,1), fmt(s.sSrR,1),
+         fmt(s.simRating,1), fmt(s.advRating,1)]
+      : [i+1, s.player, s.inns, s.runs, fmt(s.avg), fmt(s.sr,1), fmt(s.avgRating,1), fmt(s.runsRating,1),
+         (s.bonusFrac>=0?"+":"")+fmt(s.bonusFrac*100,1)+"%",
+         fmt(s.simRating,1), fmt(s.advRating,1)];
+    return `<tr class="tone ${tone}">` + cells.map((cell,ci) => {
+      const activeCol = simple ? headers.length-2 : headers.length-1;
+      const otherCol = simple ? headers.length-1 : headers.length-2;
+      let cls = "";
+      if (ci === activeCol) cls = "rating-active";
+      else if (ci === otherCol) cls = "rating-muted";
+      return `<td class="${cls}">${cell}</td>`;
+    }).join("") + "</tr>";
+  }).join("");
+  document.getElementById("table").innerHTML = thead + "<tbody>" + body + "</tbody>";
+
+  document.getElementById("caption").innerHTML =
+    `Source: Weekenders_Player_Season_Stats_Updated.xlsx &middot; Sorted by the <b>${simple?"Simple":"Advanced"}</b> rating (accent column); the other rating is greyed for comparison. Row color: green &ge; 85, blue &ge; 55, red &lt; 35.`;
+}
+
+render();
+</script>
+</body>
+</html>
