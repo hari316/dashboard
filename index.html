@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Weekenders Batting Rating</title>
+<title>Weekenders Player Ratings</title>
 <style>
 :root {
   --bg: #0e0f11;
@@ -17,6 +17,8 @@
   --green: #3fb950;
   --blue: #4c8dff;
   --red: #f0616d;
+  --amber: #d29922;
+  --violet: #a371f7;
 }
 * { box-sizing: border-box; }
 body {
@@ -26,10 +28,10 @@ body {
   font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   padding: 28px;
 }
-.wrap { max-width: 1040px; margin: 0 auto; }
+.wrap { max-width: 1160px; margin: 0 auto; }
 h1 { font-size: 24px; margin: 0 0 6px; }
 h2 { font-size: 18px; margin: 24px 0 10px; }
-p.sub { color: var(--text-2); margin: 0 0 18px; max-width: 760px; }
+p.sub { color: var(--text-2); margin: 0 0 18px; max-width: 820px; }
 .callout {
   background: var(--panel);
   border: 1px solid var(--stroke);
@@ -40,6 +42,7 @@ p.sub { color: var(--text-2); margin: 0 0 18px; max-width: 760px; }
   color: var(--text-2);
 }
 .callout b { color: var(--text); }
+.callout.warn { border-left: 3px solid var(--amber); }
 code {
   background: var(--panel-2);
   border: 1px solid var(--stroke);
@@ -73,6 +76,7 @@ code {
   user-select: none;
 }
 .pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pill.lg { padding: 7px 18px; font-size: 14px; font-weight: 600; }
 select {
   background: var(--panel-2);
   color: var(--text);
@@ -96,30 +100,52 @@ th:nth-child(2), td:nth-child(2) { text-align: left; }
 tbody tr:nth-child(even) { background: rgba(255,255,255,0.02); }
 td.rating-active { font-weight: 700; color: var(--accent); }
 td.rating-muted { color: var(--text-3); }
+td.nq { color: var(--text-3); }
+tr.nqrow { opacity: .62; }
 .tone { border-left: 3px solid transparent; }
 .tone.success { border-left-color: var(--green); }
 .tone.info { border-left-color: var(--blue); }
 .tone.danger { border-left-color: var(--red); }
 .caption { font-size: 12px; color: var(--text-3); margin-top: 8px; }
-.seg { display: flex; gap: 6px; }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.badge {
+  display: inline-block; border-radius: 999px; padding: 1px 9px;
+  font-size: 11px; font-weight: 600; border: 1px solid transparent;
+}
+.badge.bat { color: #9dc3ff; background: rgba(76,141,255,.14); border-color: rgba(76,141,255,.35); }
+.badge.bowl { color: #8ee79b; background: rgba(63,185,80,.14); border-color: rgba(63,185,80,.35); }
+.badge.ar { color: #c9a6ff; background: rgba(163,113,247,.16); border-color: rgba(163,113,247,.38); }
+.badge.prov { color: #b9c0c8; background: rgba(255,255,255,.06); border-color: var(--stroke); }
+.pass { color: var(--green); }
+.fail { color: var(--text-3); }
+td.left, th.left { text-align: left; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--text-3); }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>Weekenders Batting Rating</h1>
+  <h1>Weekenders Player Ratings</h1>
   <p class="sub" id="subtitle"></p>
 
   <div class="callout" id="formula"></div>
 
   <div class="card">
+    <h3>Discipline</h3>
+    <div class="seg" id="discipline"></div>
+    <div class="hint" style="color:var(--text-3);font-size:12px;margin-top:8px" id="disciplineHint"></div>
+  </div>
+
+  <div class="card">
     <h3>Rating parameters</h3>
-    <div class="ctrl" style="margin-bottom:18px">
+    <div class="ctrl" style="margin-bottom:18px" id="modelWrap">
       <label>Model</label>
       <div class="seg" id="model"></div>
-      <div class="hint">Simple = avg + runs + strike-rate blend. Advanced = avg + runs core with an SR bonus multiplier.</div>
+      <div class="hint" id="modelHint"></div>
     </div>
     <div class="grid" id="controls"></div>
   </div>
+
+  <div class="card" id="availCard"></div>
 
   <div class="stats" id="stats"></div>
 
@@ -128,168 +154,317 @@ td.rating-muted { color: var(--text-3); }
     <table id="table"></table>
   </div>
   <div class="caption" id="caption"></div>
+  <div class="legend" id="legend"></div>
 </div>
 
 <script>
 // ---------------------------------------------------------------------------
 // DATA
 // Source: Weekenders_Player_Season_Stats_Updated.xlsx (Calculation Data sheet).
-// Career = all seasons aggregated. avg = runs / dismissals, SR = runs / balls * 100.
+// Career = the policy evidence window (all four competitions) aggregated.
+// Batting: avg = runs / dismissals, SR = runs / balls * 100.
+// Bowling: bBalls / bRuns / wkts are full-innings figures; ppBalls / ppRuns are
+// the powerplay portion, which the team policy excludes from bowling ratings.
 // To update the dashboard, edit the rows below and reload this file.
 // ---------------------------------------------------------------------------
 const DATA = [
-  {player:"Anwar Guthbudeen",season:"2025 Champions Trophy",games:5,runs:35,balls:66,out:5,inns:5},
-  {player:"Anwar Guthbudeen",season:"2025 Fall Open",games:1,runs:7,balls:19,out:1,inns:1},
-  {player:"Anwar Guthbudeen",season:"2026 Regular Season",games:2,runs:4,balls:12,out:2,inns:2},
-  {player:"Arivazhagan Velayutham",season:"2025 Fall Open",games:1,runs:0,balls:0,out:0,inns:0},
-  {player:"Ashwath Ravichandran",season:"2025 Champions Trophy",games:1,runs:2,balls:6,out:0,inns:1},
-  {player:"Ashwath Ravichandran",season:"2025 Fall Open",games:9,runs:54,balls:90,out:5,inns:8},
-  {player:"Ashwath Ravichandran",season:"2026 Fall Open",games:3,runs:24,balls:29,out:3,inns:3},
-  {player:"Ashwath Ravichandran",season:"2026 Regular Season",games:10,runs:108,balls:119,out:9,inns:10},
-  {player:"Franco Ignaci",season:"2025 Champions Trophy",games:7,runs:20,balls:48,out:5,inns:7},
-  {player:"Franco Ignaci",season:"2025 Fall Open",games:11,runs:57,balls:66,out:5,inns:8},
-  {player:"Franco Ignaci",season:"2026 Fall Open",games:2,runs:3,balls:5,out:2,inns:2},
-  {player:"Franco Ignaci",season:"2026 Regular Season",games:8,runs:22,balls:32,out:5,inns:7},
-  {player:"Gokulnath Velliappan",season:"2025 Champions Trophy",games:5,runs:21,balls:29,out:3,inns:4},
-  {player:"Gokulnath Velliappan",season:"2025 Fall Open",games:9,runs:16,balls:15,out:2,inns:6},
-  {player:"Gokulnath Velliappan",season:"2026 Fall Open",games:4,runs:11,balls:30,out:3,inns:4},
-  {player:"Gokulnath Velliappan",season:"2026 Regular Season",games:11,runs:25,balls:67,out:5,inns:8},
-  {player:"Hari Haran Venugopal",season:"2025 Champions Trophy",games:5,runs:59,balls:90,out:4,inns:5},
-  {player:"Hari Haran Venugopal",season:"2025 Fall Open",games:12,runs:130,balls:136,out:9,inns:12},
-  {player:"Hari Haran Venugopal",season:"2026 Fall Open",games:3,runs:25,balls:33,out:3,inns:3},
-  {player:"Hari Haran Venugopal",season:"2026 Regular Season",games:8,runs:86,balls:119,out:6,inns:8},
-  {player:"Johnny Mahesh Amalachandran",season:"2025 Champions Trophy",games:4,runs:26,balls:32,out:3,inns:4},
-  {player:"Johnny Mahesh Amalachandran",season:"2025 Fall Open",games:9,runs:57,balls:119,out:9,inns:9},
-  {player:"Johnny Mahesh Amalachandran",season:"2026 Regular Season",games:9,runs:59,balls:133,out:9,inns:9},
-  {player:"Karthick Valivittan",season:"2025 Champions Trophy",games:6,runs:67,balls:91,out:6,inns:6},
-  {player:"Karthick Valivittan",season:"2025 Fall Open",games:7,runs:67,balls:75,out:6,inns:6},
-  {player:"Karthick Valivittan",season:"2026 Fall Open",games:4,runs:32,balls:34,out:4,inns:4},
-  {player:"Karthick Valivittan",season:"2026 Regular Season",games:8,runs:72,balls:94,out:7,inns:8},
-  {player:"Karthikeyan Saravanavel",season:"2025 Champions Trophy",games:6,runs:15,balls:42,out:3,inns:4},
-  {player:"Karthikeyan Saravanavel",season:"2025 Fall Open",games:13,runs:64,balls:99,out:10,inns:11},
-  {player:"Karthikeyan Saravanavel",season:"2026 Fall Open",games:4,runs:28,balls:42,out:3,inns:4},
-  {player:"Karthikeyan Saravanavel",season:"2026 Regular Season",games:11,runs:103,balls:193,out:8,inns:9},
-  {player:"Mohanasundaram Subramani",season:"2026 Fall Open",games:3,runs:40,balls:49,out:3,inns:3},
-  {player:"Mohanasundaram Subramani",season:"2026 Regular Season",games:1,runs:4,balls:6,out:1,inns:1},
-  {player:"Muthukumar Mylsamy",season:"2026 Fall Open",games:1,runs:1,balls:4,out:1,inns:1},
-  {player:"Prabakaran Ravichandran",season:"2025 Champions Trophy",games:2,runs:2,balls:3,out:1,inns:1},
-  {player:"Prabakaran Ravichandran",season:"2025 Fall Open",games:4,runs:0,balls:0,out:0,inns:0},
-  {player:"Prabakaran Ravichandran",season:"2026 Fall Open",games:2,runs:5,balls:15,out:2,inns:2},
-  {player:"Prabakaran Ravichandran",season:"2026 Regular Season",games:10,runs:41,balls:59,out:2,inns:9},
-  {player:"Raghuram Rangarajan",season:"2025 Champions Trophy",games:4,runs:12,balls:13,out:1,inns:3},
-  {player:"Raghuram Rangarajan",season:"2025 Fall Open",games:9,runs:60,balls:107,out:8,inns:8},
-  {player:"Raghuram Rangarajan",season:"2026 Fall Open",games:3,runs:8,balls:20,out:3,inns:3},
-  {player:"Raghuram Rangarajan",season:"2026 Regular Season",games:4,runs:45,balls:67,out:3,inns:4},
-  {player:"Ravindar Reddy",season:"2025 Champions Trophy",games:4,runs:17,balls:37,out:4,inns:4},
-  {player:"Ravindar Reddy",season:"2025 Fall Open",games:8,runs:47,balls:101,out:8,inns:8},
-  {player:"Ravindar Reddy",season:"2026 Regular Season",games:7,runs:28,balls:60,out:6,inns:6},
-  {player:"Sankaranarayanan Neelamegasamy",season:"2025 Champions Trophy",games:6,runs:26,balls:25,out:6,inns:6},
-  {player:"Sankaranarayanan Neelamegasamy",season:"2025 Fall Open",games:12,runs:31,balls:23,out:4,inns:8},
-  {player:"Sankaranarayanan Neelamegasamy",season:"2026 Regular Season",games:8,runs:30,balls:23,out:6,inns:7},
-  {player:"Siddhant Swaroop",season:"2025 Champions Trophy",games:5,runs:77,balls:92,out:5,inns:5},
-  {player:"Siddhant Swaroop",season:"2025 Fall Open",games:12,runs:148,balls:157,out:7,inns:11},
-  {player:"Siddhant Swaroop",season:"2026 Fall Open",games:4,runs:20,balls:50,out:3,inns:4},
-  {player:"Siddhant Swaroop",season:"2026 Regular Season",games:8,runs:4,balls:33,out:8,inns:8},
-  {player:"Sivaraman Kathiresan",season:"2025 Champions Trophy",games:5,runs:51,balls:63,out:3,inns:4},
-  {player:"Sivaraman Kathiresan",season:"2025 Fall Open",games:9,runs:67,balls:118,out:8,inns:8},
-  {player:"Sivaraman Kathiresan",season:"2026 Fall Open",games:4,runs:47,balls:62,out:4,inns:4},
-  {player:"Sivaraman Kathiresan",season:"2026 Regular Season",games:4,runs:31,balls:48,out:4,inns:4},
-  {player:"Srikanth Jothilingam",season:"2026 Fall Open",games:3,runs:24,balls:26,out:2,inns:3},
-  {player:"Srinath Murali",season:"2025 Champions Trophy",games:7,runs:75,balls:100,out:6,inns:7},
-  {player:"Srinath Murali",season:"2025 Fall Open",games:5,runs:34,balls:58,out:4,inns:4},
-  {player:"Srinath Murali",season:"2026 Fall Open",games:3,runs:13,balls:28,out:3,inns:3},
-  {player:"Srinath Murali",season:"2026 Regular Season",games:6,runs:28,balls:75,out:5,inns:5},
-  {player:"Vijayan N",season:"2025 Champions Trophy",games:5,runs:20,balls:36,out:4,inns:4},
-  {player:"Vijayan N",season:"2025 Fall Open",games:12,runs:141,balls:249,out:10,inns:12},
-  {player:"Vijayan N",season:"2026 Fall Open",games:1,runs:9,balls:13,out:1,inns:1},
-  {player:"Vijayan N",season:"2026 Regular Season",games:6,runs:63,balls:99,out:5,inns:5},
+  {player:"Anwar Guthbudeen",season:"2025 Champions Trophy",games:5,runs:35,balls:66,out:5,inns:5,bBalls:8,bRuns:7,wkts:0,ppBalls:6,ppRuns:5},
+  {player:"Anwar Guthbudeen",season:"2025 Fall Open",games:1,runs:7,balls:19,out:1,inns:1,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Anwar Guthbudeen",season:"2026 Regular Season",games:2,runs:4,balls:12,out:2,inns:2,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Arivazhagan Velayutham",season:"2025 Fall Open",games:1,runs:0,balls:0,out:0,inns:0,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Ashwath Ravichandran",season:"2025 Champions Trophy",games:1,runs:2,balls:6,out:0,inns:1,bBalls:24,bRuns:12,wkts:2,ppBalls:6,ppRuns:5},
+  {player:"Ashwath Ravichandran",season:"2025 Fall Open",games:9,runs:54,balls:90,out:5,inns:8,bBalls:58,bRuns:41,wkts:0,ppBalls:24,ppRuns:12},
+  {player:"Ashwath Ravichandran",season:"2026 Fall Open",games:3,runs:24,balls:29,out:3,inns:3,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Ashwath Ravichandran",season:"2026 Regular Season",games:10,runs:108,balls:119,out:9,inns:10,bBalls:36,bRuns:28,wkts:4,ppBalls:12,ppRuns:9},
+  {player:"Franco Ignaci",season:"2025 Champions Trophy",games:7,runs:20,balls:48,out:5,inns:7,bBalls:119,bRuns:100,wkts:8,ppBalls:42,ppRuns:43},
+  {player:"Franco Ignaci",season:"2025 Fall Open",games:11,runs:57,balls:66,out:5,inns:8,bBalls:103,bRuns:93,wkts:4,ppBalls:24,ppRuns:22},
+  {player:"Franco Ignaci",season:"2026 Fall Open",games:2,runs:3,balls:5,out:2,inns:2,bBalls:42,bRuns:32,wkts:4,ppBalls:6,ppRuns:7},
+  {player:"Franco Ignaci",season:"2026 Regular Season",games:8,runs:22,balls:32,out:5,inns:7,bBalls:46,bRuns:42,wkts:2,ppBalls:6,ppRuns:0},
+  {player:"Gokulnath Velliappan",season:"2025 Champions Trophy",games:5,runs:21,balls:29,out:3,inns:4,bBalls:80,bRuns:71,wkts:4,ppBalls:24,ppRuns:15},
+  {player:"Gokulnath Velliappan",season:"2025 Fall Open",games:9,runs:16,balls:15,out:2,inns:6,bBalls:54,bRuns:47,wkts:2,ppBalls:18,ppRuns:16},
+  {player:"Gokulnath Velliappan",season:"2026 Fall Open",games:4,runs:11,balls:30,out:3,inns:4,bBalls:36,bRuns:17,wkts:2,ppBalls:12,ppRuns:9},
+  {player:"Gokulnath Velliappan",season:"2026 Regular Season",games:11,runs:25,balls:67,out:5,inns:8,bBalls:66,bRuns:40,wkts:3,ppBalls:12,ppRuns:15},
+  {player:"Hari Haran Venugopal",season:"2025 Champions Trophy",games:5,runs:59,balls:90,out:4,inns:5,bBalls:6,bRuns:7,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Hari Haran Venugopal",season:"2025 Fall Open",games:12,runs:130,balls:136,out:9,inns:12,bBalls:5,bRuns:13,wkts:1,ppBalls:6,ppRuns:13},
+  {player:"Hari Haran Venugopal",season:"2026 Fall Open",games:3,runs:25,balls:33,out:3,inns:3,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Hari Haran Venugopal",season:"2026 Regular Season",games:8,runs:86,balls:119,out:6,inns:8,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Johnny Mahesh Amalachandran",season:"2025 Champions Trophy",games:4,runs:26,balls:32,out:3,inns:4,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Johnny Mahesh Amalachandran",season:"2025 Fall Open",games:9,runs:57,balls:119,out:9,inns:9,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Johnny Mahesh Amalachandran",season:"2026 Regular Season",games:9,runs:59,balls:133,out:9,inns:9,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Karthick Valivittan",season:"2025 Champions Trophy",games:6,runs:67,balls:91,out:6,inns:6,bBalls:108,bRuns:84,wkts:5,ppBalls:30,ppRuns:25},
+  {player:"Karthick Valivittan",season:"2025 Fall Open",games:7,runs:67,balls:75,out:6,inns:6,bBalls:64,bRuns:18,wkts:8,ppBalls:18,ppRuns:0},
+  {player:"Karthick Valivittan",season:"2026 Fall Open",games:4,runs:32,balls:34,out:4,inns:4,bBalls:61,bRuns:48,wkts:6,ppBalls:18,ppRuns:22},
+  {player:"Karthick Valivittan",season:"2026 Regular Season",games:8,runs:72,balls:94,out:7,inns:8,bBalls:48,bRuns:26,wkts:2,ppBalls:12,ppRuns:5},
+  {player:"Karthikeyan Saravanavel",season:"2025 Champions Trophy",games:6,runs:15,balls:42,out:3,inns:4,bBalls:89,bRuns:58,wkts:5,ppBalls:18,ppRuns:12},
+  {player:"Karthikeyan Saravanavel",season:"2025 Fall Open",games:13,runs:64,balls:99,out:10,inns:11,bBalls:78,bRuns:64,wkts:1,ppBalls:24,ppRuns:23},
+  {player:"Karthikeyan Saravanavel",season:"2026 Fall Open",games:4,runs:28,balls:42,out:3,inns:4,bBalls:60,bRuns:34,wkts:5,ppBalls:18,ppRuns:6},
+  {player:"Karthikeyan Saravanavel",season:"2026 Regular Season",games:11,runs:103,balls:193,out:8,inns:9,bBalls:96,bRuns:59,wkts:8,ppBalls:24,ppRuns:18},
+  {player:"Mohanasundaram Subramani",season:"2026 Fall Open",games:3,runs:40,balls:49,out:3,inns:3,bBalls:18,bRuns:13,wkts:1,ppBalls:6,ppRuns:4},
+  {player:"Mohanasundaram Subramani",season:"2026 Regular Season",games:1,runs:4,balls:6,out:1,inns:1,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Muthukumar Mylsamy",season:"2026 Fall Open",games:1,runs:1,balls:4,out:1,inns:1,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Prabakaran Ravichandran",season:"2025 Champions Trophy",games:2,runs:2,balls:3,out:1,inns:1,bBalls:42,bRuns:23,wkts:2,ppBalls:12,ppRuns:7},
+  {player:"Prabakaran Ravichandran",season:"2025 Fall Open",games:4,runs:0,balls:0,out:0,inns:0,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Prabakaran Ravichandran",season:"2026 Fall Open",games:2,runs:5,balls:15,out:2,inns:2,bBalls:12,bRuns:11,wkts:0,ppBalls:6,ppRuns:3},
+  {player:"Prabakaran Ravichandran",season:"2026 Regular Season",games:10,runs:41,balls:59,out:2,inns:9,bBalls:62,bRuns:42,wkts:3,ppBalls:12,ppRuns:9},
+  {player:"Raghuram Rangarajan",season:"2025 Champions Trophy",games:4,runs:12,balls:13,out:1,inns:3,bBalls:48,bRuns:39,wkts:4,ppBalls:6,ppRuns:1},
+  {player:"Raghuram Rangarajan",season:"2025 Fall Open",games:9,runs:60,balls:107,out:8,inns:8,bBalls:42,bRuns:35,wkts:2,ppBalls:12,ppRuns:8},
+  {player:"Raghuram Rangarajan",season:"2026 Fall Open",games:3,runs:8,balls:20,out:3,inns:3,bBalls:48,bRuns:29,wkts:0,ppBalls:12,ppRuns:14},
+  {player:"Raghuram Rangarajan",season:"2026 Regular Season",games:4,runs:45,balls:67,out:3,inns:4,bBalls:14,bRuns:6,wkts:2,ppBalls:0,ppRuns:0},
+  {player:"Ravindar Reddy",season:"2025 Champions Trophy",games:4,runs:17,balls:37,out:4,inns:4,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Ravindar Reddy",season:"2025 Fall Open",games:8,runs:47,balls:101,out:8,inns:8,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Ravindar Reddy",season:"2026 Regular Season",games:7,runs:28,balls:60,out:6,inns:6,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Sankaranarayanan Neelamegasamy",season:"2025 Champions Trophy",games:6,runs:26,balls:25,out:6,inns:6,bBalls:108,bRuns:90,wkts:3,ppBalls:36,ppRuns:48},
+  {player:"Sankaranarayanan Neelamegasamy",season:"2025 Fall Open",games:12,runs:31,balls:23,out:4,inns:8,bBalls:90,bRuns:72,wkts:7,ppBalls:18,ppRuns:15},
+  {player:"Sankaranarayanan Neelamegasamy",season:"2026 Regular Season",games:8,runs:30,balls:23,out:6,inns:7,bBalls:30,bRuns:23,wkts:2,ppBalls:6,ppRuns:8},
+  {player:"Siddhant Swaroop",season:"2025 Champions Trophy",games:5,runs:77,balls:92,out:5,inns:5,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Siddhant Swaroop",season:"2025 Fall Open",games:12,runs:148,balls:157,out:7,inns:11,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Siddhant Swaroop",season:"2026 Fall Open",games:4,runs:20,balls:50,out:3,inns:4,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Siddhant Swaroop",season:"2026 Regular Season",games:8,runs:4,balls:33,out:8,inns:8,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Sivaraman Kathiresan",season:"2025 Champions Trophy",games:5,runs:51,balls:63,out:3,inns:4,bBalls:72,bRuns:50,wkts:7,ppBalls:24,ppRuns:13},
+  {player:"Sivaraman Kathiresan",season:"2025 Fall Open",games:9,runs:67,balls:118,out:8,inns:8,bBalls:36,bRuns:15,wkts:2,ppBalls:12,ppRuns:8},
+  {player:"Sivaraman Kathiresan",season:"2026 Fall Open",games:4,runs:47,balls:62,out:4,inns:4,bBalls:30,bRuns:40,wkts:0,ppBalls:12,ppRuns:13},
+  {player:"Sivaraman Kathiresan",season:"2026 Regular Season",games:4,runs:31,balls:48,out:4,inns:4,bBalls:12,bRuns:12,wkts:1,ppBalls:6,ppRuns:5},
+  {player:"Srikanth Jothilingam",season:"2026 Fall Open",games:3,runs:24,balls:26,out:2,inns:3,bBalls:41,bRuns:23,wkts:6,ppBalls:12,ppRuns:6},
+  {player:"Srinath Murali",season:"2025 Champions Trophy",games:7,runs:75,balls:100,out:6,inns:7,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Srinath Murali",season:"2025 Fall Open",games:5,runs:34,balls:58,out:4,inns:4,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Srinath Murali",season:"2026 Fall Open",games:3,runs:13,balls:28,out:3,inns:3,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Srinath Murali",season:"2026 Regular Season",games:6,runs:28,balls:75,out:5,inns:5,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Vijayan N",season:"2025 Champions Trophy",games:5,runs:20,balls:36,out:4,inns:4,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Vijayan N",season:"2025 Fall Open",games:12,runs:141,balls:249,out:10,inns:12,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Vijayan N",season:"2026 Fall Open",games:1,runs:9,balls:13,out:1,inns:1,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
+  {player:"Vijayan N",season:"2026 Regular Season",games:6,runs:63,balls:99,out:5,inns:5,bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0},
 ];
 
 const SEASONS = ["Career","2025 Champions Trophy","2025 Fall Open","2026 Fall Open","2026 Regular Season"];
+
+// Published reference values from the Summer / Fall 2026 Team Policy (Draft 3.6)
+// calculation appendix. Full precision, as the policy specifies.
+const POLICY_REF = {
+  avg: 11.1348,   // 2561 runs / 230 dismissals
+  sr: 67.4658,    // 2561 runs / 3796 balls x 100
+  econ: 4.2267,   // 2884 runs / 682.33 overs
+  bsr: 15.8682,   // 4094 balls / 258 wickets
+};
+
+// Section 3 of the policy requires "confirmed regular bowling availability" for
+// All-rounder status. This is a declared field rather than a computed one, so it
+// is editable per player in the UI; the default follows the published role
+// table, which lists Ashwath as the one player not confirmed.
+const DEFAULT_BOWLING_UNCONFIRMED = ["Ashwath Ravichandran"];
+
+// Management-declared primary discipline, matching the Bowler outcomes in the
+// policy role table. When the All-rounder gate fails, the policy falls back to
+// comparing discipline percentiles; that comparison flips a specialist's label
+// whenever bowling volume is under-recorded, so a declaration decides the
+// specialist outcome instead. The All-rounder gate itself stays data-driven.
+const DECLARED_BOWLERS = new Set([
+  "Prabakaran Ravichandran",
+  "Franco Ignaci",
+  "Raghuram Rangarajan",
+]);
 
 // ---------------------------------------------------------------------------
 // LOGIC + RENDERING
 // ---------------------------------------------------------------------------
 const state = {
-  model: "simple",
+  discipline: "batting",      // batting | bowling | allrounder
+  model: "policy",            // policy | simple  (simple = batting only)
   season: "Career",
+  refBasis: "policy",         // computed | policy
+  excludePP: true,
+  wBatAvg: 70,                // policy batting weight on Average Rating
+  wBowlEcon: 70,              // policy bowling weight on Economy Rating
+  arGate: 50,                 // All-rounder percentile gate
+  applyAvailability: true,
+  applyDeclaredRoles: true,
+  bowlingUnconfirmed: new Set(DEFAULT_BOWLING_UNCONFIRMED),
+  minGames: 5,
+  minInns: 5,
+  minOvers: 8,
+  minWkts: 1,
+  // exploratory batting-only model
   wSimpleSplit: "50-20-30",
-  curve: 100,
-  runsCurve: 100,
-  wAvg: 70,
-  baseline: 60,
-  xBonus: 5,
-  minInns: 3,
-  capOn: true,
-  capMax: 30,
-  penalize: false,
 };
-
-function aggregate(season) {
-  const rows = season === "Career" ? DATA : DATA.filter(r => r.season === season);
-  const map = new Map();
-  for (const r of rows) {
-    const a = map.get(r.player) || {player:r.player,runs:0,balls:0,out:0,inns:0,games:0};
-    a.runs += r.runs; a.balls += r.balls; a.out += r.out; a.inns += r.inns; a.games += r.games;
-    map.set(r.player, a);
-  }
-  const out = [...map.values()];
-  for (const a of out) {
-    a.avg = a.out > 0 ? a.runs / a.out : (a.runs > 0 ? a.runs : null);
-    a.sr = a.balls > 0 ? (a.runs / a.balls) * 100 : null;
-  }
-  return out;
-}
 
 function fmt(n, d = 2) {
   if (n === null || n === undefined || Number.isNaN(n)) return "\u2014";
   return n.toFixed(d);
 }
+function nq(n, d = 2) {
+  if (n === null || n === undefined || Number.isNaN(n)) return "NQ";
+  return n.toFixed(d);
+}
+// Balls -> cricket over notation (e.g. 50 balls = 8.2 overs).
+function overs(balls) {
+  return Math.floor(balls / 6) + "." + (balls % 6);
+}
 
-function compute() {
+function aggregate(season) {
+  const rows = season === "Career" ? DATA : DATA.filter(r => r.season === season);
+  const map = new Map();
+  for (const r of rows) {
+    const a = map.get(r.player) || {player:r.player,games:0,runs:0,balls:0,out:0,inns:0,
+                                    bBalls:0,bRuns:0,wkts:0,ppBalls:0,ppRuns:0};
+    a.games += r.games; a.runs += r.runs; a.balls += r.balls; a.out += r.out; a.inns += r.inns;
+    a.bBalls += r.bBalls; a.bRuns += r.bRuns; a.wkts += r.wkts;
+    a.ppBalls += r.ppBalls; a.ppRuns += r.ppRuns;
+    map.set(r.player, a);
+  }
+  const list = [...map.values()];
+  for (const a of list) {
+    a.avg = a.out > 0 ? a.runs / a.out : (a.runs > 0 ? a.runs : null);
+    a.sr = a.balls > 0 ? (a.runs / a.balls) * 100 : null;
+    // Policy excludes the powerplay from bowling ratings.
+    a.oBalls = state.excludePP ? a.bBalls - a.ppBalls : a.bBalls;
+    a.oRuns = state.excludePP ? a.bRuns - a.ppRuns : a.bRuns;
+    a.ov = a.oBalls / 6;
+    a.econ = a.oBalls > 0 ? a.oRuns / (a.oBalls / 6) : null;
+    a.bsr = a.wkts > 0 ? a.oBalls / a.wkts : null;
+  }
+  return list;
+}
+
+// Team reference values = squad totals over the selected window.
+function teamRefs(list) {
+  let runs=0, balls=0, out=0, oBalls=0, oRuns=0, wkts=0;
+  for (const a of list) {
+    runs += a.runs; balls += a.balls; out += a.out;
+    oBalls += a.oBalls; oRuns += a.oRuns; wkts += a.wkts;
+  }
+  return {
+    avg: out > 0 ? runs / out : null,
+    sr: balls > 0 ? runs / balls * 100 : null,
+    econ: oBalls > 0 ? oRuns / (oBalls / 6) : null,
+    bsr: wkts > 0 ? oBalls / wkts : null,
+    runs, balls, out, oBalls, oRuns, wkts,
+  };
+}
+
+// Ascending rank / cohort size, as a percentage. Lowest rating = 1/N.
+function assignPercentiles(pool, key, target) {
+  const sorted = [...pool].sort((x, y) => x[key] - y[key]);
+  sorted.forEach((a, i) => { a[target] = (i + 1) / sorted.length * 100; });
+}
+
+function classify(a) {
+  const g = state.arGate;
+  if (!a.evidenceOK) {
+    return {role:"Provisional", check:`Below ${state.minGames} games / ${state.minInns} innings`, final:null};
+  }
+  const availOK = !state.applyAvailability || !state.bowlingUnconfirmed.has(a.player);
+  const declaredBowler = state.applyDeclaredRoles && DECLARED_BOWLERS.has(a.player);
+
+  if (a.batQ && a.bowlQ) {
+    if (a.batPctl >= g && a.bowlPctl >= g && availOK) {
+      return {role:"All-rounder", check:"Pass", final:a.arRating};
+    }
+    let check;
+    if (!availOK) check = "Bowling availability not confirmed";
+    else if (a.batPctl < g && a.bowlPctl < g) check = "Both percentiles below " + g + "%";
+    else if (a.batPctl < g) check = "Batting percentile below " + g + "%";
+    else check = "Bowling percentile below " + g + "%";
+    // A declaration overrides the percentile comparison for the specialist label.
+    const role = declaredBowler ? "Bowler" : (a.batPctl >= a.bowlPctl ? "Batsman" : "Bowler");
+    if (declaredBowler) check += " \u00b7 declared bowler";
+    return {role, check, final: role === "Batsman" ? a.batRating : a.bowlRating};
+  }
+  if (a.batQ) return {role:"Batsman", check:"No qualified Bowling Rating", final:a.batRating};
+  if (a.bowlQ) return {role:"Bowler", check:"No qualified Batting Rating", final:a.bowlRating};
+  return {role:"Provisional", check:"No qualified rating", final:null};
+}
+
+function computePolicy() {
+  const all = aggregate(state.season);
+  const computed = teamRefs(all);
+  const ref = state.refBasis === "policy" ? Object.assign({}, computed, POLICY_REF) : computed;
+  const wb = state.wBatAvg / 100;
+  const wo = state.wBowlEcon / 100;
+
+  for (const a of all) {
+    a.evidenceOK = a.games >= state.minGames && a.inns >= state.minInns;
+    a.batQ = a.evidenceOK && a.avg !== null && a.sr !== null && ref.avg > 0 && ref.sr > 0;
+    a.bowlQ = a.evidenceOK && a.ov >= state.minOvers && a.wkts >= state.minWkts
+              && a.econ !== null && a.econ > 0 && a.bsr !== null && a.bsr > 0
+              && ref.econ > 0 && ref.bsr > 0;
+
+    a.avgRtg = a.batQ ? a.avg / ref.avg * 100 : null;
+    a.srRtg = a.batQ ? a.sr / ref.sr * 100 : null;
+    a.batRating = a.batQ ? wb * a.avgRtg + (1 - wb) * a.srRtg : null;
+
+    // Lower is better for both bowling metrics, so the ratio is inverted.
+    a.econRtg = a.bowlQ ? ref.econ / a.econ * 100 : null;
+    a.bsrRtg = a.bowlQ ? ref.bsr / a.bsr * 100 : null;
+    a.bowlRating = a.bowlQ ? wo * a.econRtg + (1 - wo) * a.bsrRtg : null;
+
+    a.arRating = (a.batRating !== null && a.bowlRating !== null && a.batRating + a.bowlRating > 0)
+      ? 2 * a.batRating * a.bowlRating / (a.batRating + a.bowlRating) : null;
+  }
+
+  assignPercentiles(all.filter(a => a.batQ), "batRating", "batPctl");
+  assignPercentiles(all.filter(a => a.bowlQ), "bowlRating", "bowlPctl");
+
+  for (const a of all) {
+    const c = classify(a);
+    a.role = c.role; a.check = c.check; a.finalRating = c.final;
+  }
+
+  const batCohort = all.filter(a => a.batQ).length;
+  const bowlCohort = all.filter(a => a.bowlQ).length;
+  const counts = {
+    Batsman: all.filter(a => a.role === "Batsman").length,
+    Bowler: all.filter(a => a.role === "Bowler").length,
+    "All-rounder": all.filter(a => a.role === "All-rounder").length,
+    Provisional: all.filter(a => a.role === "Provisional").length,
+  };
+  return {all, ref, computed, batCohort, bowlCohort, counts};
+}
+
+// Exploratory batting-only model, retained from the original dashboard. Unlike
+// the policy rating, each metric is graded against the team's best rather than
+// the squad average, so 100 means "equal to the best in the squad".
+function computeSimple() {
   const s = state;
-  const simple = s.model === "simple";
   const all = aggregate(s.season);
   const qualified = all.filter(a => a.inns >= s.minInns && a.avg !== null && a.sr !== null);
   const bestAvg = qualified.reduce((m,a) => Math.max(m, a.avg || 0), 0);
   const bestRuns = qualified.reduce((m,a) => Math.max(m, a.runs), 0);
   const bestSR = qualified.reduce((m,a) => Math.max(m, a.sr || 0), 0);
-  const benchmark = bestAvg * s.curve / 100;
-  const runsBenchmark = bestRuns * s.runsCurve / 100;
-  const wa = s.wAvg / 100;
   const [sWA, sWR, sWS] = s.wSimpleSplit.split("-").map(n => Number(n) / 100);
 
   const scored = qualified.map(a => {
-    const avg = a.avg, sr = a.sr;
-    const sAvgR = bestAvg > 0 ? Math.min(100, avg / bestAvg * 100) : 0;
+    const sAvgR = bestAvg > 0 ? Math.min(100, a.avg / bestAvg * 100) : 0;
     const sRunsR = bestRuns > 0 ? Math.min(100, a.runs / bestRuns * 100) : 0;
-    const sSrR = bestSR > 0 ? Math.min(100, sr / bestSR * 100) : 0;
-    const simRating = sWA*sAvgR + sWR*sRunsR + sWS*sSrR;
-    const avgRating = benchmark > 0 ? Math.min(100, avg / benchmark * 100) : 0;
-    const runsRating = runsBenchmark > 0 ? Math.min(100, a.runs / runsBenchmark * 100) : 0;
-    const core = wa*avgRating + (1-wa)*runsRating;
-    let bonusFrac = ((sr - s.baseline) / 5) * (s.xBonus / 100);
-    if (!s.penalize && bonusFrac < 0) bonusFrac = 0;
-    if (s.capOn) bonusFrac = Math.min(bonusFrac, s.capMax / 100);
-    const advRating = core * (1 + bonusFrac);
-    return {...a, avg, sr, sAvgR, sRunsR, sSrR, simRating, avgRating, runsRating, core, bonusFrac, advRating,
-            rating: simple ? simRating : advRating};
+    const sSrR = bestSR > 0 ? Math.min(100, a.sr / bestSR * 100) : 0;
+    return Object.assign({}, a, {sAvgR, sRunsR, sSrR, rating: sWA*sAvgR + sWR*sRunsR + sWS*sSrR});
   }).sort((x,y) => y.rating - x.rating);
 
-  return {simple, scored, bestAvg, bestRuns, bestSR, benchmark, runsBenchmark, qualified,
+  return {scored, bestAvg, bestRuns, bestSR,
           bestAvgPlayer: (qualified.find(a=>a.avg===bestAvg)||{}).player || "\u2014",
           bestRunsPlayer: (qualified.find(a=>a.runs===bestRuns)||{}).player || "\u2014",
           bestSRPlayer: (qualified.find(a=>a.sr===bestSR)||{}).player || "\u2014"};
 }
 
-function pills(options, current, onPick, suffix) {
+function pills(options, current, onPick, suffix, big) {
   const div = document.createElement("div");
   div.className = "pills";
   for (const o of options) {
     const b = document.createElement("div");
-    b.className = "pill" + (o === current ? " active" : "");
+    b.className = "pill" + (big ? " lg" : "") + (o === current ? " active" : "");
     b.textContent = o + (suffix || "");
     b.onclick = () => { onPick(o); render(); };
+    div.appendChild(b);
+  }
+  return div;
+}
+
+function labelledPills(options, current, onPick, big) {
+  const div = document.createElement("div");
+  div.className = "pills";
+  for (const [v, l] of options) {
+    const b = document.createElement("div");
+    b.className = "pill" + (big ? " lg" : "") + (v === current ? " active" : "");
+    b.textContent = l;
+    b.onclick = () => { onPick(v); render(); };
     div.appendChild(b);
   }
   return div;
@@ -304,28 +479,273 @@ function ctrl(label, node, hint) {
   return d;
 }
 
-function render() {
-  const r = compute();
-  const simple = r.simple;
+function checkbox(labelText, checked, onChange) {
+  const row = document.createElement("div"); row.className = "switch";
+  const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = checked;
+  cb.onchange = () => { onChange(cb.checked); render(); };
+  const sp = document.createElement("span"); sp.textContent = labelText;
+  row.appendChild(cb); row.appendChild(sp);
+  return row;
+}
 
-  document.getElementById("subtitle").textContent = simple
-    ? "Simple model: average, total runs, and strike rate are each graded on a curve against the team's best, then blended by weight."
-    : "Advanced model: average and total runs form a curved core, then a strike-rate bonus is applied on top.";
+// Bowling availability is a declared field, so it gets an editable panel rather
+// than being buried in a constant. Only players who already hold a qualified
+// Bowling Rating can be affected by the gate, so only they are listed.
+function renderAvailability(r) {
+  const card = document.getElementById("availCard");
+  const pool = r.all.filter(a => a.bowlQ).sort((x, y) => x.player.localeCompare(y.player));
+  card.innerHTML = "";
+  if (!pool.length) { card.style.display = "none"; return; }
+  card.style.display = "";
+
+  const h = document.createElement("h3");
+  h.textContent = "Bowling availability \u2014 declared per player";
+  card.appendChild(h);
+
+  const note = document.createElement("div");
+  note.style.cssText = "color:var(--text-3);font-size:12px;margin:-6px 0 14px";
+  note.textContent = state.applyAvailability
+    ? "Ticked = confirmed regular bowling availability. Section 3 requires this for All-rounder status, so unticking a player caps them at their specialist role. Defaults follow the policy role table."
+    : "The availability gate is switched off above, so these declarations are currently ignored.";
+  card.appendChild(note);
+
+  const grid = document.createElement("div");
+  grid.className = "grid";
+  for (const a of pool) {
+    const confirmed = !state.bowlingUnconfirmed.has(a.player);
+    const gatedOnlyByAvailability = !confirmed && state.applyAvailability
+      && a.batPctl >= state.arGate && a.bowlPctl >= state.arGate;
+
+    const row = document.createElement("div");
+    row.appendChild(checkbox(a.player, confirmed, v => {
+      if (v) state.bowlingUnconfirmed.delete(a.player);
+      else state.bowlingUnconfirmed.add(a.player);
+    }));
+    const sub = document.createElement("div");
+    sub.style.cssText = "font-size:12px;color:var(--text-3);margin:2px 0 0 24px";
+    sub.innerHTML = `Bowling ${fmt(a.bowlRating)} at ${Math.round(a.bowlPctl)}% &middot; ${badge(a.role)}`
+      + (gatedOnlyByAvailability
+          ? ` <span style="color:var(--amber)">&mdash; clears both percentile gates; would be an All-rounder at ${fmt(a.arRating)} if confirmed</span>`
+          : "");
+    row.appendChild(sub);
+    grid.appendChild(row);
+  }
+  card.appendChild(grid);
+}
+
+function badge(role) {
+  const cls = role === "Batsman" ? "bat" : role === "Bowler" ? "bowl"
+            : role === "All-rounder" ? "ar" : "prov";
+  return `<span class="badge ${cls}">${role}</span>`;
+}
+
+function render() {
+  const d = state.discipline;
+  const policyMode = state.model === "policy" || d !== "batting";
+
+  // ---- discipline toggle ----------------------------------------------------
+  const discDiv = document.getElementById("discipline");
+  discDiv.innerHTML = "";
+  discDiv.appendChild(labelledPills(
+    [["batting","Batting"],["bowling","Bowling"],["allrounder","All-rounder"]],
+    d, v => {
+      state.discipline = v;
+      if (v !== "batting") state.model = "policy";
+    }, true));
+  document.getElementById("disciplineHint").textContent =
+    d === "batting" ? "Batting Rating = 70% Average Rating + 30% Strike Rate Rating."
+    : d === "bowling" ? "Bowling Rating = 70% Economy Rating + 30% Bowling Strike Rate Rating. Powerplay excluded."
+    : "All-rounder Rating = harmonic mean of the two discipline ratings, gated on both percentiles.";
+
+  // ---- model toggle (batting only) -----------------------------------------
+  const modelWrap = document.getElementById("modelWrap");
+  const modelDiv = document.getElementById("model");
+  if (d === "batting") {
+    modelWrap.style.display = "";
+    modelDiv.innerHTML = "";
+    modelDiv.appendChild(labelledPills(
+      [["policy","Policy (70 Avg / 30 SR)"],["simple","Simple (Avg + Runs + SR)"]],
+      state.model, v => state.model = v));
+    document.getElementById("modelHint").textContent =
+      "Policy = the team policy formula, graded against the squad average. Simple is an exploratory model graded against the team's best.";
+  } else {
+    modelWrap.style.display = "none";
+  }
+
+  if (policyMode) renderPolicy(); else renderSimple();
+}
+
+function renderPolicy() {
+  const d = state.discipline;
+  const r = computePolicy();
+  const ref = r.ref;
+
+  document.getElementById("subtitle").textContent =
+    d === "batting" ? "Batting Rating from the Summer / Fall 2026 Team Policy: average and strike rate are each expressed as a percentage of the squad reference, then blended 70 / 30. A rating of 100 equals the reference."
+    : d === "bowling" ? "Bowling Rating from the Summer / Fall 2026 Team Policy: economy and bowling strike rate are each expressed against the squad reference (inverted, because lower is better), then blended 70 / 30. Powerplay overs are excluded."
+    : "All-rounder Rating from the Summer / Fall 2026 Team Policy: the harmonic mean of the Batting and Bowling Ratings. Qualification is an AND rule on both discipline percentiles.";
+
+  const g = state.arGate;
+  document.getElementById("formula").innerHTML =
+    d === "batting"
+      ? `<b>Formula.</b> Average Rating = player average / reference average (<code>${fmt(ref.avg,4)}</code>) &times; 100 &middot; Strike Rate Rating = player SR / reference SR (<code>${fmt(ref.sr,4)}</code>) &times; 100<br>Batting Rating = <code>${state.wBatAvg}%</code> &times; Average Rating + <code>${100-state.wBatAvg}%</code> &times; Strike Rate Rating &middot; Percentile = ascending rank within the ${r.batCohort}-player qualified cohort.`
+      : d === "bowling"
+      ? `<b>Formula.</b> Economy Rating = reference economy (<code>${fmt(ref.econ,4)}</code>) / player economy &times; 100 &middot; Bowling SR Rating = reference bowling SR (<code>${fmt(ref.bsr,4)}</code>) / player bowling SR &times; 100<br>Bowling Rating = <code>${state.wBowlEcon}%</code> &times; Economy Rating + <code>${100-state.wBowlEcon}%</code> &times; Bowling SR Rating &middot; Percentile = ascending rank within the ${r.bowlCohort}-player qualified cohort.`
+      : `<b>Formula.</b> All-rounder Rating = 2 &times; Batting Rating &times; Bowling Rating / (Batting Rating + Bowling Rating)<br>Gate = Batting Percentile &ge; <code>${g}%</code> <b>AND</b> Bowling Percentile &ge; <code>${g}%</code>, plus evidence and confirmed bowling availability. A high percentile in one discipline cannot compensate for the other.`;
+
+  // ---- controls -------------------------------------------------------------
+  const c = document.getElementById("controls");
+  c.innerHTML = "";
+
+  const seasonSel = document.createElement("select");
+  SEASONS.forEach(s => {
+    const o = document.createElement("option"); o.value = s;
+    o.textContent = s === "Career" ? "Career (policy evidence window)" : s;
+    if (s === state.season) o.selected = true; seasonSel.appendChild(o);
+  });
+  seasonSel.onchange = () => { state.season = seasonSel.value; render(); };
+  c.appendChild(ctrl("Season", seasonSel, "Career aggregates all four competitions in the policy evidence window."));
+
+  c.appendChild(ctrl("Reference basis",
+    labelledPills([["computed","Computed from season"],["policy","Policy published"]],
+      state.refBasis, v => state.refBasis = v),
+    "Computed = squad totals for the selected season. Policy published = the Draft 3.6 appendix values."));
+
+  if (d === "batting" || d === "allrounder") {
+    c.appendChild(ctrl(`Batting weight \u2014 Avg ${state.wBatAvg}% / SR ${100-state.wBatAvg}%`,
+      pills([50,60,70,80], state.wBatAvg, v => state.wBatAvg = v, "%"), "Policy value is 70% on Average Rating."));
+  }
+  if (d === "bowling" || d === "allrounder") {
+    c.appendChild(ctrl(`Bowling weight \u2014 Econ ${state.wBowlEcon}% / B.SR ${100-state.wBowlEcon}%`,
+      pills([50,60,70,80], state.wBowlEcon, v => state.wBowlEcon = v, "%"), "Policy value is 70% on Economy Rating."));
+  }
+
+  c.appendChild(ctrl("Evidence gate \u2014 minimum games",
+    pills([1,3,5,8], state.minGames, v => state.minGames = v), "Policy gate is 5 games AND 5 innings."));
+  c.appendChild(ctrl("Evidence gate \u2014 minimum innings",
+    pills([1,3,5,8], state.minInns, v => state.minInns = v), "Below either minimum the player is Provisional."));
+
+  if (d === "bowling" || d === "allrounder") {
+    c.appendChild(ctrl("Bowling gate \u2014 minimum overs",
+      pills([0,4,8,12], state.minOvers, v => state.minOvers = v), "Policy gate is at least 8 overs and 1 wicket."));
+    c.appendChild(ctrl("Bowling gate \u2014 minimum wickets",
+      pills([0,1,2,3], state.minWkts, v => state.minWkts = v)));
+  }
+
+  if (d === "allrounder") {
+    c.appendChild(ctrl("All-rounder percentile gate",
+      pills([40,50,60], state.arGate, v => state.arGate = v, "%"),
+      "Scenario 3 of the policy adopts the 50th percentile. Exactly 50% passes."));
+  }
+
+  const flags = document.createElement("div");
+  flags.appendChild(checkbox("Exclude powerplay from bowling", state.excludePP, v => state.excludePP = v));
+  const availRow = checkbox("Apply bowling-availability gate", state.applyAvailability, v => state.applyAvailability = v);
+  availRow.style.marginTop = "10px";
+  flags.appendChild(availRow);
+  const declRow = checkbox("Use declared primary role for specialists", state.applyDeclaredRoles, v => state.applyDeclaredRoles = v);
+  declRow.style.marginTop = "10px";
+  flags.appendChild(declRow);
+  c.appendChild(ctrl("Policy options", flags,
+    "All-rounder status requires confirmed regular bowling availability. Declared roles settle the Batsman / Bowler label when the All-rounder gate fails; unchecking falls back to comparing percentiles."));
+
+  // ---- headline stats -------------------------------------------------------
+  const stats = document.getElementById("stats");
+  let items;
+  if (d === "batting") {
+    items = [[fmt(ref.avg,2), "Reference average = 100", true],
+             [fmt(ref.sr,2), "Reference strike rate = 100", true],
+             [String(r.batCohort), "Batting-qualified players", false]];
+  } else if (d === "bowling") {
+    items = [[fmt(ref.econ,2), "Reference economy = 100", true],
+             [fmt(ref.bsr,2), "Reference bowling SR = 100", true],
+             [String(r.bowlCohort), "Bowling-qualified players", false]];
+  } else {
+    items = [[String(r.counts["All-rounder"]), "All-rounders", true],
+             [String(r.counts.Batsman), "Batsmen", false],
+             [String(r.counts.Bowler), "Bowlers", false],
+             [String(r.counts.Provisional), "Provisional", false]];
+  }
+  stats.innerHTML = items.map(([v,l,info]) =>
+    `<div class="stat"><div class="v${info?" info":""}">${v}</div><div class="l">${l}</div></div>`).join("");
+
+  // ---- table ----------------------------------------------------------------
+  const title = d === "batting" ? "Batting Rating" : d === "bowling" ? "Bowling Rating" : "All-rounder Rating";
+  document.getElementById("lbTitle").textContent = title + " \u2014 " + state.season;
+
+  const key = d === "batting" ? "batRating" : d === "bowling" ? "bowlRating" : "finalRating";
+  const isQ = a => d === "batting" ? a.batQ : d === "bowling" ? a.bowlQ : a.finalRating !== null;
+  const rows = [...r.all].sort((x, y) => {
+    const qx = isQ(x), qy = isQ(y);
+    if (qx !== qy) return qx ? -1 : 1;
+    if (!qx) return x.player.localeCompare(y.player);
+    return y[key] - x[key];
+  });
+
+  let headers, cellsFor;
+  if (d === "batting") {
+    headers = ["#","Player","G","Inns","Runs","Avg","SR","Avg Rtg","SR Rtg","Batting Rating","Bat Pctl","Role"];
+    cellsFor = (s, i) => [isQ(s) ? i+1 : "\u2014", s.player, s.games, s.inns, s.runs, fmt(s.avg), fmt(s.sr,2),
+      nq(s.avgRtg), nq(s.srRtg), nq(s.batRating), s.batQ ? Math.round(s.batPctl)+"%" : "NQ", badge(s.role)];
+  } else if (d === "bowling") {
+    headers = ["#","Player","G","Ov","W","Econ","B.SR","Econ Rtg","B.SR Rtg","Bowling Rating","Bowl Pctl","Role"];
+    cellsFor = (s, i) => [isQ(s) ? i+1 : "\u2014", s.player, s.games, overs(s.oBalls), s.wkts,
+      s.econ !== null ? fmt(s.econ) : "\u2014", s.bsr !== null ? fmt(s.bsr,2) : "\u2014",
+      nq(s.econRtg), nq(s.bsrRtg), nq(s.bowlRating), s.bowlQ ? Math.round(s.bowlPctl)+"%" : "NQ", badge(s.role)];
+  } else {
+    headers = ["#","Player","Batting Rating","Bat Pctl","Bowling Rating","Bowl Pctl","All-rounder Rating","Final Rating","Qualification check","Outcome"];
+    cellsFor = (s, i) => [isQ(s) ? i+1 : "\u2014", s.player, nq(s.batRating),
+      s.batQ ? Math.round(s.batPctl)+"%" : "NQ", nq(s.bowlRating), s.bowlQ ? Math.round(s.bowlPctl)+"%" : "NQ",
+      nq(s.arRating), nq(s.finalRating),
+      `<span class="${s.check==="Pass"?"pass":"fail"}">${s.check}</span>`, badge(s.role)];
+  }
+
+  const thead = "<thead><tr>" + headers.map((h,i) =>
+    `<th class="${i===1?"left":""}">${h}</th>`).join("") + "</tr></thead>";
+
+  const ratingCol = d === "allrounder" ? headers.indexOf("Final Rating") : headers.indexOf(title);
+  const body = rows.map((s, i) => {
+    const val = s[key];
+    const tone = !isQ(s) ? "" : val >= 105 ? "success" : val >= 95 ? "info" : val < 80 ? "danger" : "";
+    const cells = cellsFor(s, i);
+    return `<tr class="tone ${tone}${isQ(s) ? "" : " nqrow"}">` + cells.map((cell, ci) => {
+      let cls = ci === 1 ? "left" : "";
+      if (ci === ratingCol) cls += isQ(s) ? " rating-active" : " nq";
+      if (d === "allrounder" && (ci === headers.length-2)) cls = "left";
+      return `<td class="${cls.trim()}">${cell}</td>`;
+    }).join("") + "</tr>";
+  }).join("");
+  renderAvailability(r);
+
+  const empty = `<tr><td class="left" colspan="${headers.length}" style="color:var(--text-3);padding:14px 10px">`
+    + `No player clears the evidence gate for this selection \u2014 lower the minimum games / innings above.</td></tr>`;
+  document.getElementById("table").innerHTML = thead + "<tbody>" + (rows.some(isQ) ? body : empty + body) + "</tbody>";
+
+  const refLabel = state.refBasis === "policy"
+    ? "policy-published reference values"
+    : `reference values computed from the ${state.season === "Career" ? "full evidence window" : state.season} squad totals`;
+  document.getElementById("caption").innerHTML =
+    `Roles: Batsmen ${r.counts.Batsman} &middot; Bowlers ${r.counts.Bowler} &middot; All-rounders ${r.counts["All-rounder"]} &middot; Provisional ${r.counts.Provisional}. `
+    + `Rated against ${refLabel}. NQ = evidence threshold not met; NQ rows are listed last. `
+    + `Full precision is used throughout; displayed values are rounded.`;
+
+  document.getElementById("legend").innerHTML =
+    `<span>Row colour: green &ge; 105 &middot; blue &ge; 95 &middot; red &lt; 80 (100 = reference)</span>`
+    + `<span>Batting gate: ${state.minGames} games and ${state.minInns} innings</span>`
+    + (d !== "batting" ? `<span>Bowling gate: ${state.minOvers} overs and ${state.minWkts} wicket(s)</span>` : "")
+    + (state.excludePP ? `<span>Powerplay excluded from bowling</span>` : `<span>Powerplay included in bowling</span>`);
+}
+
+function renderSimple() {
+  const r = computeSimple();
+  document.getElementById("availCard").style.display = "none";
+
+  document.getElementById("subtitle").textContent =
+    "Simple model: average, total runs, and strike rate are each graded on a curve against the team's best, then blended by weight.";
 
   const [sWA, sWR, sWS] = state.wSimpleSplit.split("-");
-  document.getElementById("formula").innerHTML = simple
-    ? `<b>Formula.</b> Avg Rating = min(100, avg / best avg &times; 100) &middot; Runs Rating = min(100, runs / best runs &times; 100) &middot; SR Rating = min(100, SR / best SR &times; 100)<br>Rating = <code>${sWA}%</code> &times; Avg + <code>${sWR}%</code> &times; Runs + <code>${sWS}%</code> &times; SR`
-    : `<b>Formula.</b> Avg Rating = min(100, avg / (best avg &times; curve%) &times; 100) &middot; Runs Rating = min(100, runs / (best runs &times; runs curve%) &times; 100)<br>Core = w &times; Avg Rating + (1 &minus; w) &times; Runs Rating &middot; SR Bonus = ((SR &minus; baseline) / 5) &times; x% &middot; Rating = Core &times; (1 + SR Bonus)`;
-
-  const modelDiv = document.getElementById("model");
-  modelDiv.innerHTML = "";
-  [["simple","Simple (Avg + Runs + SR)"],["advanced","Advanced (Avg + Runs + SR bonus)"]].forEach(([v,l]) => {
-    const b = document.createElement("div");
-    b.className = "pill" + (state.model === v ? " active" : "");
-    b.textContent = l;
-    b.onclick = () => { state.model = v; render(); };
-    modelDiv.appendChild(b);
-  });
+  document.getElementById("formula").innerHTML =
+    `<b>Formula.</b> Avg Rating = min(100, avg / best avg &times; 100) &middot; Runs Rating = min(100, runs / best runs &times; 100) &middot; SR Rating = min(100, SR / best SR &times; 100)<br>Rating = <code>${sWA}%</code> &times; Avg + <code>${sWR}%</code> &times; Runs + <code>${sWS}%</code> &times; SR`;
 
   const c = document.getElementById("controls");
   c.innerHTML = "";
@@ -338,80 +758,56 @@ function render() {
   c.appendChild(ctrl("Minimum innings (qualification)",
     pills([1,2,3,5,8], state.minInns, v => state.minInns = v), "Filters out tiny samples."));
 
-  if (simple) {
-    const splitSel = document.createElement("select");
-    [["60-00-40","Avg 60 / Runs 0 / SR 40"],["50-20-30","Avg 50 / Runs 20 / SR 30"],
-     ["40-30-30","Avg 40 / Runs 30 / SR 30"],["40-20-40","Avg 40 / Runs 20 / SR 40"],
-     ["34-33-33","Avg 34 / Runs 33 / SR 33"],["50-30-20","Avg 50 / Runs 30 / SR 20"]].forEach(([v,l]) => {
-      const o = document.createElement("option"); o.value = v; o.textContent = l; if (v===state.wSimpleSplit) o.selected = true; splitSel.appendChild(o);
-    });
-    splitSel.onchange = () => { state.wSimpleSplit = splitSel.value; render(); };
-    c.appendChild(ctrl("Weight split \u2014 Avg / Runs / SR", splitSel, "How the three metrics are blended (sums to 100%)."));
-  } else {
-    c.appendChild(ctrl(`Avg curve \u2014 % of best avg (${fmt(r.benchmark,2)})`,
-      pills([50,60,70,80,100], state.curve, v => state.curve = v, "%"), "Higher = stricter; fewer players hit 100."));
-    c.appendChild(ctrl(`Runs curve \u2014 % of best runs (${fmt(r.runsBenchmark,0)})`,
-      pills([50,60,70,80,100], state.runsCurve, v => state.runsCurve = v, "%"), "Rewards total volume of runs scored."));
-    c.appendChild(ctrl(`Weight \u2014 Avg ${state.wAvg}% / Runs ${100-state.wAvg}%`,
-      pills([50,60,70,80,100], state.wAvg, v => state.wAvg = v, "%"), "How much average matters vs total runs."));
-    c.appendChild(ctrl("SR baseline (bonus starts above this)",
-      pills([50,55,60,65], state.baseline, v => state.baseline = v)));
-    c.appendChild(ctrl("x \u2014 bonus % per 5 SR over baseline",
-      pills([3,5,8,10], state.xBonus, v => state.xBonus = v, "%"), "Higher rewards fast scoring more."));
-
-    const capWrap = document.createElement("div");
-    const capRow = document.createElement("div"); capRow.className = "switch";
-    const capCb = document.createElement("input"); capCb.type = "checkbox"; capCb.checked = state.capOn;
-    capCb.onchange = () => { state.capOn = capCb.checked; render(); };
-    const capLbl = document.createElement("span"); capLbl.textContent = "Cap SR bonus";
-    capRow.appendChild(capCb); capRow.appendChild(capLbl); capWrap.appendChild(capRow);
-    if (state.capOn) { capWrap.appendChild(pills([15,20,30,50], state.capMax, v => state.capMax = v, "%")); }
-    const penRow = document.createElement("div"); penRow.className = "switch"; penRow.style.marginTop = "10px";
-    const penCb = document.createElement("input"); penCb.type = "checkbox"; penCb.checked = state.penalize;
-    penCb.onchange = () => { state.penalize = penCb.checked; render(); };
-    const penLbl = document.createElement("span"); penLbl.textContent = "Penalize SR below baseline";
-    penRow.appendChild(penCb); penRow.appendChild(penLbl); capWrap.appendChild(penRow);
-    c.appendChild(ctrl("Strike-rate bonus", capWrap));
-  }
+  const splitSel = document.createElement("select");
+  [["60-00-40","Avg 60 / Runs 0 / SR 40"],["50-20-30","Avg 50 / Runs 20 / SR 30"],
+   ["40-30-30","Avg 40 / Runs 30 / SR 30"],["40-20-40","Avg 40 / Runs 20 / SR 40"],
+   ["34-33-33","Avg 34 / Runs 33 / SR 33"],["50-30-20","Avg 50 / Runs 30 / SR 20"]].forEach(([v,l]) => {
+    const o = document.createElement("option"); o.value = v; o.textContent = l; if (v===state.wSimpleSplit) o.selected = true; splitSel.appendChild(o);
+  });
+  splitSel.onchange = () => { state.wSimpleSplit = splitSel.value; render(); };
+  c.appendChild(ctrl("Weight split \u2014 Avg / Runs / SR", splitSel, "How the three metrics are blended (sums to 100%)."));
 
   const stats = document.getElementById("stats");
   const statItems = [
     [fmt(r.bestAvg,2), `Best avg (${r.bestAvgPlayer.split(" ")[0]})`, false],
     [String(r.bestRuns), `Best runs (${r.bestRunsPlayer.split(" ")[0]})`, false],
+    [fmt(r.bestSR,1), `Best SR (${r.bestSRPlayer.split(" ")[0]})`, true],
+    [String(r.scored.length), "Qualified players", false],
   ];
-  if (simple) statItems.push([fmt(r.bestSR,1), `Best SR (${r.bestSRPlayer.split(" ")[0]})`, true]);
-  else { statItems.push([fmt(r.benchmark,2), "Avg benchmark = 100", true]); statItems.push([fmt(r.runsBenchmark,0), "Runs benchmark = 100", true]); }
-  statItems.push([String(r.scored.length), "Qualified players", false]);
   stats.innerHTML = statItems.map(([v,l,info]) => `<div class="stat"><div class="v${info?" info":""}">${v}</div><div class="l">${l}</div></div>`).join("");
 
   document.getElementById("lbTitle").textContent = "Leaderboard \u2014 " + state.season;
-  const headers = simple
-    ? ["#","Player","Inns","Runs","Avg","SR","Avg R","Runs R","SR R","Simple","Advanced"]
-    : ["#","Player","Inns","Runs","Avg","SR","Avg R","Runs R","SR Bonus","Simple","Advanced"];
-  const thead = "<thead><tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr></thead>";
+  const headers = ["#","Player","Inns","Runs","Avg","SR","Avg R","Runs R","SR R","Simple"];
+  const thead = "<thead><tr>" + headers.map((h,i) => `<th class="${i===1?"left":""}">${h}</th>`).join("") + "</tr></thead>";
   const body = r.scored.map((s, i) => {
     const tone = s.rating >= 85 ? "success" : s.rating >= 55 ? "info" : s.rating < 35 ? "danger" : "";
-    const cells = simple
-      ? [i+1, s.player, s.inns, s.runs, fmt(s.avg), fmt(s.sr,1), fmt(s.sAvgR,1), fmt(s.sRunsR,1), fmt(s.sSrR,1),
-         fmt(s.simRating,1), fmt(s.advRating,1)]
-      : [i+1, s.player, s.inns, s.runs, fmt(s.avg), fmt(s.sr,1), fmt(s.avgRating,1), fmt(s.runsRating,1),
-         (s.bonusFrac>=0?"+":"")+fmt(s.bonusFrac*100,1)+"%",
-         fmt(s.simRating,1), fmt(s.advRating,1)];
+    const cells = [i+1, s.player, s.inns, s.runs, fmt(s.avg), fmt(s.sr,1),
+                   fmt(s.sAvgR,1), fmt(s.sRunsR,1), fmt(s.sSrR,1), fmt(s.rating,1)];
     return `<tr class="tone ${tone}">` + cells.map((cell,ci) => {
-      const activeCol = simple ? headers.length-2 : headers.length-1;
-      const otherCol = simple ? headers.length-1 : headers.length-2;
-      let cls = "";
-      if (ci === activeCol) cls = "rating-active";
-      else if (ci === otherCol) cls = "rating-muted";
-      return `<td class="${cls}">${cell}</td>`;
+      let cls = ci === 1 ? "left" : "";
+      if (ci === headers.length-1) cls += " rating-active";
+      return `<td class="${cls.trim()}">${cell}</td>`;
     }).join("") + "</tr>";
   }).join("");
   document.getElementById("table").innerHTML = thead + "<tbody>" + body + "</tbody>";
 
   document.getElementById("caption").innerHTML =
-    `Source: Weekenders_Player_Season_Stats_Updated.xlsx &middot; Sorted by the <b>${simple?"Simple":"Advanced"}</b> rating (accent column); the other rating is greyed for comparison. Row color: green &ge; 85, blue &ge; 55, red &lt; 35.`;
+    `Source: Weekenders_Player_Season_Stats_Updated.xlsx &middot; Sorted by the <b>Simple</b> rating (accent column).`;
+  document.getElementById("legend").innerHTML =
+    `<span>Row colour: green &ge; 85 &middot; blue &ge; 55 &middot; red &lt; 35</span>`
+    + `<span>Exploratory model \u2014 not the team policy formula</span>`;
 }
 
+// Deep-link the discipline toggle, e.g. index.html#bowling
+function applyHash() {
+  const h = (location.hash || "").replace("#", "").toLowerCase();
+  if (["batting","bowling","allrounder"].includes(h)) {
+    state.discipline = h;
+    if (h !== "batting") state.model = "policy";
+  }
+}
+window.addEventListener("hashchange", () => { applyHash(); render(); });
+applyHash();
 render();
 </script>
 </body>
